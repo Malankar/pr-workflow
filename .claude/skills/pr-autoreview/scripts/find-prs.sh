@@ -18,13 +18,30 @@ done
 if [[ -n "${ORG:-}" ]]; then query+=" org:$ORG"; fi
 
 me="$(gh api user --jq .login)"
-candidates="$(gh search prs "$query" --limit 50 --json repository,number,title,url,author)"
+if [[ -n "${REPOS:-}" ]]; then
+  # List each repo directly and apply the search filters here. Don't pass --search or --author
+  # to gh pr list: both go through GitHub search, which can return nothing for some accounts.
+  candidates="[]"
+  for r in $REPOS; do
+    candidates="$(gh pr list -R "$r" --state open --limit 100 \
+        --json number,title,url,author,isDraft,headRefOid,reviewRequests,latestReviews \
+      | jq --arg r "$r" --arg me "$me" --arg skip "$SKIP_IF_REVIEWED_BY" --argjson acc "$candidates" '
+          ($skip | split(" ") | map(select(. != "")) + [$me]) as $reviewers
+          | $acc + [.[]
+            | select(.isDraft | not)
+            | select(any(.reviewRequests[]; .login? == $me))
+            | select([.latestReviews[].author.login] as $by | ($by - $reviewers | length) == ($by | length))
+            | {repository: {nameWithOwner: $r}, number, title, url, author, headRefOid}]')"
+  done
+else
+  candidates="$(gh search prs "$query" --limit 50 --json repository,number,title,url,author)"
+fi
 
 queue="[]"
-while IFS=$'\t' read -r repo number title url; do
+while IFS=$'\t' read -r repo number title url head_sha; do
   [[ -z "$repo" ]] && continue
 
-  head_sha="$(gh pr view "$number" -R "$repo" --json headRefOid --jq .headRefOid)"
+  [[ -n "$head_sha" ]] || head_sha="$(gh pr view "$number" -R "$repo" --json headRefOid --jq .headRefOid)"
 
   # Already reviewed this exact commit (covers the window before you submit a pending review).
   seen_sha="$(jq -r --arg k "$repo#$number" '.[$k].sha // ""' "$STATE_FILE")"
@@ -40,7 +57,7 @@ while IFS=$'\t' read -r repo number title url; do
 done < <(jq -r '.[]
   | select((.author.is_bot // false) | not)
   | select((.author.login // "") | test("\\[bot\\]$") | not)
-  | [.repository.nameWithOwner, .number, .title, .url] | @tsv' <<<"$candidates")
+  | [.repository.nameWithOwner, .number, .title, .url, (.headRefOid // "")] | @tsv' <<<"$candidates")
 
 queue="$(jq --argjson max "$MAX_PRS_PER_RUN" '.[:$max]' <<<"$queue")"
 echo "$queue" > "$STATE_DIR/queue.json"

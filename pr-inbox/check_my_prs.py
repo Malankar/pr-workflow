@@ -124,8 +124,18 @@ def main():
     ignore = set(cfg.get("IGNORE_AUTHORS", "").split()) | {me}
     include_bots = cfg.get("INCLUDE_BOTS", "false") == "true"
 
-    query = "is:pr is:open author:@me" + (f" org:{cfg['ORG']}" if cfg.get("ORG") else "")
-    prs = json.loads(gh(["search", "prs", query, "--limit", "50", "--json", "repository,number,title,url"]))
+    if cfg.get("REPOS"):
+        # List each repo directly and filter by author here. gh pr list --author goes through
+        # GitHub search, which can return nothing for some accounts.
+        prs = []
+        for repo in cfg["REPOS"].split():
+            for pr in json.loads(gh(["pr", "list", "-R", repo, "--state", "open", "--limit", "100",
+                                     "--json", "number,title,url,author"])):
+                if (pr["author"] or {}).get("login") == me:
+                    prs.append({**pr, "repository": {"nameWithOwner": repo}})
+    else:
+        query = "is:pr is:open author:@me" + (f" org:{cfg['ORG']}" if cfg.get("ORG") else "")
+        prs = json.loads(gh(["search", "prs", query, "--limit", "50", "--json", "repository,number,title,url"]))
 
     fresh = {}
     for pr in prs:
