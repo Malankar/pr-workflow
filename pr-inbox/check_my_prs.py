@@ -99,6 +99,17 @@ def notify(cfg, title, message):
             urllib.request.urlopen(req, timeout=10)
         except Exception as err:  # a failed notification must not lose the state update
             print(f"slack notify failed: {err}", file=sys.stderr)
+    token, chat_id = cfg.get("TELEGRAM_BOT_TOKEN", ""), cfg.get("TELEGRAM_CHAT_ID", "")
+    if token and chat_id:
+        # Plain text (no parse_mode) so comment text can't break Markdown parsing. Telegram caps at 4096.
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
+                                     data=json.dumps({"chat_id": chat_id,
+                                                      "text": f"{title}\n{message}"[:4096]}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as err:  # don't print the URL: it contains the bot token
+            print(f"telegram notify failed: {type(err).__name__}", file=sys.stderr)
 
 
 def main():
