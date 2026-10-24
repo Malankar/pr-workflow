@@ -1,0 +1,24 @@
+{
+  "model": "sonnet",
+  "permissions": {
+    "allow": [
+      "Bash(bash .claude/skills/pr-autoreview/scripts/find-prs.sh:*)",
+      "Bash(bash .claude/skills/pr-autoreview/scripts/prepare-pr.sh:*)",
+      "Bash(python3 .claude/skills/pr-autoreview/scripts/post_review.py:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git worktree remove:*)",
+      "Read(~/.pr-autoreview/**)",
+      "Edit(~/.pr-autoreview/**)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(gh api:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh pr review:*)",
+      "Bash(gh pr merge:*)"
+    ]
+  }
+}
