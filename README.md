@@ -9,6 +9,7 @@ claude-automations/
 ├── .claude/skills/pr-autoreview/   reviews PRs waiting on you (3×/day)
 ├── .claude/agents/                 pr-bug-hunter, pr-verifier
 ├── pr-inbox/check_my_prs.py        new comments on YOUR PRs (every 2h, no AI)
+├── pr-inbox/digest.py              daily Telegram digest of everything waiting on you (no AI)
 ├── pr-inbox/ask_fixes.py           Telegram "fix 1,3" picker that starts uncommitted fix sessions (no AI)
 └── global/pr-brief/                interactive hand-off skill, installed to ~/.claude
 ```
@@ -71,6 +72,10 @@ The first run reports everything already waiting on you, so expect a bigger batc
 With `AUTO_BRIEF=true` there is no early ping. The PR inbox agent judges each new comment and writes `~/.pr-inbox/briefs/<owner>/<repo>#<n>/findings.json`. The **PR fix ask** automation (precheck `pr-inbox/ask_fixes.py`, no agent) checks every 30 minutes, at :20 and :50. It waits until the PR inbox agent run has finished, then sends one numbered Telegram message: comment, context, issue, fix, with not-valid ones as FYI.
 
 Reply `fix all`, `fix 1,3,4` or `none` within 9 minutes. For each PR you picked from, it creates an Orca worktree `fix-<repo>-<pr>` from the PR branch and starts a Claude session there with only those fixes. If that worktree already exists, the new session starts in it and keeps the earlier uncommitted changes. Nothing is committed, pushed, replied to or resolved; check the diff in that session and tell it what to do next. No reply means the same findings are asked again 2 hours later (`ASK_AGAIN_H`).
+
+### Daily digest
+
+The **PR digest** automation runs `pr-inbox/digest.py` at 09:15 IST on weekdays (precheck only, no agent). One Telegram message lists: your PRs with comments waiting on you, PRs you reviewed where someone replied and you haven't followed up (skipped if your latest review is an approval), and PRs where your review is requested and you haven't touched them. Open PRs only, no bots, nothing sent when all three are empty. Preview it with `python3 pr-inbox/digest.py --dry-run`.
 
 Test without Telegram or Orca: `python3 pr-inbox/ask_fixes.py --dry-run --reply "fix 1,3" --state-dir <dir>`.
 
