@@ -15,21 +15,21 @@ Run every command from the root of the `claude-automations` repo.
 
 ## 1. Find work
 
-The Orca precheck has already run `find-prs.sh` (finds the PRs) and `ask-prs.py` (asked the user on Telegram which ones to review, and waited up to 9 minutes, the most an Orca precheck allows). Read the picked PRs:
+The Orca precheck has already run `find-prs.sh` (finds the PRs) and `ask-prs.py` (asked the user on Telegram which ones to review, and waited up to 9 minutes, the most an Orca precheck allows). It left the picked PRs in `~/.pr-autoreview/queue.json`. That file is single-use: take it, and move it out of the way so the same picks can never be reviewed twice.
 
 ```bash
-cat ~/.pr-autoreview/queue.json
+f=~/.pr-autoreview/queue.json; [ -s "$f" ] && mv "$f" ~/.pr-autoreview/queue.used.json && cat ~/.pr-autoreview/queue.used.json
 ```
 
-It's a JSON array (repo, number, title, url, headSha). Review exactly those and no others. If it's empty, write "No PRs picked" and end the run. The filtering (bots, Dependabot, drafts, PRs already reviewed by you or the skip-list, commits already reviewed) is already done; don't second-guess it.
+It's a JSON array (repo, number, title, url, headSha). Review exactly those and no others. The filtering (bots, Dependabot, drafts, PRs already reviewed by you or the skip-list, commits already reviewed) is already done; don't second-guess it.
 
-Don't run `find-prs.sh` or `ask-prs.py` yourself in an Orca run: it would ask the user a second time. Only if there's no precheck (a manual "run pr-autoreview" in a normal session), run them in order first:
+If the file is missing or `[]` there's no fresh pick, which means this isn't a precheck run (for example a manual "run pr-autoreview" in a normal session). Then run both scripts yourself, in order, and use the PRs the second one prints:
 
 ```bash
 bash .claude/skills/pr-autoreview/scripts/find-prs.sh && python3 .claude/skills/pr-autoreview/scripts/ask-prs.py
 ```
 
-`ask-prs.py` is the only allowed way to ask the user anything.
+If that exits 1 too, write "No PRs picked" and end the run. `ask-prs.py` is the only allowed way to ask the user anything.
 
 ## 2. For each PR, one at a time
 
