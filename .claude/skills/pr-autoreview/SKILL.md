@@ -15,7 +15,7 @@ Run every command from the root of the `claude-automations` repo.
 
 ## 1. Find work
 
-The Orca precheck has already run `find-prs.sh` (finds the PRs) and `ask-prs.py` (asked the user on Telegram which ones to review, and waited up to 30 minutes). Read the picked PRs:
+The Orca precheck has already run `find-prs.sh` (finds the PRs) and `ask-prs.py` (asked the user on Telegram which ones to review, and waited up to 9 minutes, the most an Orca precheck allows). Read the picked PRs:
 
 ```bash
 cat ~/.pr-autoreview/queue.json

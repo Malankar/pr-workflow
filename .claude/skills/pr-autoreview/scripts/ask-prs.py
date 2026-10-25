@@ -22,7 +22,7 @@ import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "30"))
+TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "9"))
 
 
 def load_config():
