@@ -15,11 +15,21 @@ Run every command from the root of the `claude-automations` repo.
 
 ## 1. Find work
 
+The Orca precheck has already run `find-prs.sh` (finds the PRs) and `ask-prs.py` (asked the user on Telegram which ones to review, and waited up to 30 minutes). Read the picked PRs:
+
 ```bash
-bash .claude/skills/pr-autoreview/scripts/find-prs.sh
+cat ~/.pr-autoreview/queue.json
 ```
 
-It prints a JSON array (repo, number, title, url, headSha) and exits 1 when there's nothing to do. Exit 1 means stop: write "No PRs to review" and end the run. The filtering (bots, Dependabot, drafts, PRs already reviewed by you or the skip-list, commits already reviewed) is already done; don't second-guess it.
+It's a JSON array (repo, number, title, url, headSha). Review exactly those and no others. If it's empty, write "No PRs picked" and end the run. The filtering (bots, Dependabot, drafts, PRs already reviewed by you or the skip-list, commits already reviewed) is already done; don't second-guess it.
+
+Don't run `find-prs.sh` or `ask-prs.py` yourself in an Orca run: it would ask the user a second time. Only if there's no precheck (a manual "run pr-autoreview" in a normal session), run them in order first:
+
+```bash
+bash .claude/skills/pr-autoreview/scripts/find-prs.sh && python3 .claude/skills/pr-autoreview/scripts/ask-prs.py
+```
+
+`ask-prs.py` is the only allowed way to ask the user anything.
 
 ## 2. For each PR, one at a time
 

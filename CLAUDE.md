@@ -16,6 +16,6 @@ Write normal, complete English for:
 
 ## Rules
 
-- Never ask a question. Take the documented fallback and note it in the run summary.
+- Never ask a question. Take the documented fallback and note it in the run summary. The one exception: `ask-prs.py` asks which PRs to review over Telegram.
 - Never comment, review, approve, merge or push yourself. Only the scripts in this repo talk to GitHub.
 - Read less: start with `git diff --stat`, then read only the hunks and line ranges you need. Don't read whole large files.
