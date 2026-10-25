@@ -37,7 +37,7 @@ Set the automation's **precheck** to `bash .claude/skills/pr-autoreview/scripts/
 
 ## Workflow 2: comments on your own PRs
 
-Every 2 hours, `check_my_prs.py` looks at your open PRs. For any comment you haven't been told about yet, it sends a notification (macOS, Linux and/or Slack) and writes `~/.pr-inbox/inbox.md`.
+Every 2 hours, `check_my_prs.py` looks at your open PRs and collects what is waiting on you right now: unresolved threads where someone else spoke last, conversation comments after your last one, and reviews with a summary. Merged and closed PRs, approvals and bots are skipped, and anything you answer drops out. For each item you haven't been told about yet (remembered in `~/.pr-inbox/handled.json`), it sends a notification (macOS, Linux, Slack and/or Telegram) and writes `~/.pr-inbox/inbox.md`.
 
 When you want help, hand off from any session:
 
@@ -64,7 +64,7 @@ Set the precheck to `python3 pr-inbox/check_my_prs.py`.
 - **Default, `AUTO_BRIEF=false`:** the precheck always exits 1, so you get notifications and spend zero tokens.
 - **`AUTO_BRIEF=true`:** when something's new, the agent pre-writes the briefs so they're waiting for you. This costs tokens even for comments you'd have handled yourself.
 
-The first run marks existing comments as read, so you aren't flooded.
+The first run reports everything already waiting on you, so expect a bigger batch than usual that once.
 
 ### Fixing comments from Telegram (`AUTO_BRIEF=true`)
 

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""pr-inbox: tell me about new comments on my open PRs. No AI, no tokens.
+"""pr-inbox: tell me what is waiting for my reply on my open PRs. No AI, no tokens.
 
 Run it every 2 hours, as an Orca precheck or from cron. It looks at every open PR you
-authored and collects comments you haven't been told about yet:
-  - inline review comments in threads that are still unresolved,
-  - conversation comments,
-  - reviews that approve, request changes, or carry a summary.
-Your own comments and bots are skipped. Then it notifies you and writes ~/.pr-inbox/inbox.md.
+authored and collects what is waiting on you right now, whenever it was written:
+  - inline comments in unresolved threads after your last reply in that thread,
+  - conversation comments after your last conversation comment,
+  - reviews with a summary written after your last conversation comment.
+Merged and closed PRs, approvals, your own comments and bots are skipped. Anything you answer
+drops out by itself. Items it already told you about are remembered in handled.json, so each
+one is reported once. Then it notifies you and writes ~/.pr-inbox/inbox.md.
 
-Exit code: 1 unless AUTO_BRIEF=true and something is new. As an Orca precheck, exit 1 means
-"skip the agent run", so in the default notify-only mode this never spends a token.
+Exit code: 1 unless AUTO_BRIEF=true and something is waiting that you haven't been told about.
+As an Orca precheck, exit 1 means "skip the agent run", so with nothing to report this never
+spends a token.
 """
 import json
 import pathlib
@@ -56,8 +59,8 @@ def one_line(text, limit=90):
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def collect(repo, number):
-    """Every comment on one PR that could deserve a notification."""
+def collect(repo, number, me):
+    """Everything on one PR that is waiting for my reply."""
     owner, name = repo.split("/")
     items = []
     data = json.loads(gh(["api", "graphql", "-f", f"query={THREADS_QUERY}",
@@ -66,18 +69,23 @@ def collect(repo, number):
         if thread["isResolved"]:
             continue
         where = f"{thread['path']}:{thread['line'] or '?'}"
-        for c in thread["comments"]["nodes"]:
+        comments = thread["comments"]["nodes"]
+        mine = [i for i, c in enumerate(comments) if (c["author"] or {}).get("login") == me]
+        for c in comments[(mine[-1] + 1 if mine else 0):]:
             items.append({"id": c["id"], "author": (c["author"] or {}).get("login", "ghost"),
                           "kind": "inline", "where": where, "text": c["body"], "url": c["url"]})
-    for c in json.loads(gh(["api", f"repos/{repo}/issues/{number}/comments?per_page=100"])):
-        items.append({"id": f"issue-comment-{c['id']}", "author": c["user"]["login"],
-                      "kind": "comment", "where": "conversation", "text": c["body"], "url": c["html_url"]})
+    conversation = json.loads(gh(["api", f"repos/{repo}/issues/{number}/comments?per_page=100"]))
+    last_reply = max((c["created_at"] for c in conversation if c["user"]["login"] == me), default="")
+    for c in conversation:
+        if c["created_at"] > last_reply:
+            items.append({"id": f"issue-comment-{c['id']}", "author": c["user"]["login"],
+                          "kind": "comment", "where": "conversation", "text": c["body"], "url": c["html_url"]})
     for r in json.loads(gh(["api", f"repos/{repo}/pulls/{number}/reviews?per_page=100"])):
         state, body = r["state"], (r.get("body") or "").strip()
-        # A plain COMMENTED review with no body is just the wrapper around inline comments.
-        if state == "PENDING" or (state == "COMMENTED" and not body):
+        # No body means a wrapper around inline comments, which are collected above. Approvals need no reply.
+        if state in ("PENDING", "APPROVED", "DISMISSED") or not body or (r.get("submitted_at") or "") <= last_reply:
             continue
-        label = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes requested"}.get(state, "review")
+        label = "changes requested" if state == "CHANGES_REQUESTED" else "review"
         items.append({"id": f"review-{r['id']}", "author": r["user"]["login"], "kind": label,
                       "where": "review", "text": body, "url": r["html_url"]})
     return items
@@ -116,9 +124,8 @@ def main():
     cfg = load_config()
     state_dir = pathlib.Path(cfg["STATE_DIR"])
     state_dir.mkdir(parents=True, exist_ok=True)
-    seen_file = state_dir / "seen.json"
-    first_run = not seen_file.exists()
-    seen = set(json.loads(seen_file.read_text())) if not first_run else set()
+    handled_file = state_dir / "handled.json"  # seen.json is the old "new since last time" state; unused now
+    handled = set(json.loads(handled_file.read_text())) if handled_file.exists() else set()
 
     me = gh(["api", "user", "--jq", ".login"]).strip()
     ignore = set(cfg.get("IGNORE_AUTHORS", "").split()) | {me}
@@ -141,28 +148,19 @@ def main():
     for pr in prs:
         repo, number = pr["repository"]["nameWithOwner"], pr["number"]
         try:
-            items = collect(repo, number)
+            items = collect(repo, number, me)
         except RuntimeError as err:
             print(f"skipping {repo}#{number}: {err}", file=sys.stderr)
             continue
         for it in items:
-            if it["id"] in seen:
-                continue
-            seen.add(it["id"])
             author = it["author"]
-            if author in ignore or (author.endswith("[bot]") and not include_bots):
+            if it["id"] in handled or author in ignore or (author.endswith("[bot]") and not include_bots):
                 continue
+            handled.add(it["id"])
             fresh.setdefault(f"{repo}#{number}", {"title": pr["title"], "url": pr["url"], "items": []})["items"].append(it)
 
-    seen_file.write_text(json.dumps(sorted(seen)))
+    handled_file.write_text(json.dumps(sorted(handled)))
     total = sum(len(p["items"]) for p in fresh.values())
-
-    if first_run:
-        notify(cfg, "PR inbox is set up",
-               f"Watching {len(prs)} open PR(s). {total} existing comment(s) marked as read; "
-               "you'll hear about new ones from now on.")
-        print(json.dumps({"firstRun": True, "prs": len(prs), "markedRead": total}))
-        sys.exit(1)
 
     if not fresh:
         print(json.dumps({"new": 0}))
@@ -173,7 +171,7 @@ def main():
     summary = []
     for ref, pr in fresh.items():
         who = sorted({i["author"] for i in pr["items"]})
-        summary.append(f"{ref}: {len(pr['items'])} new from {', '.join(who)}")
+        summary.append(f"{ref}: {len(pr['items'])} waiting on you from {', '.join(who)}")
         lines += [f"## [{ref}]({pr['url']}) {pr['title']}", ""]
         for i in pr["items"]:
             lines.append(f"- **{i['author']}** ({i['kind']}, `{i['where']}`): {one_line(i['text'])} [open]({i['url']})")
@@ -185,7 +183,7 @@ def main():
     auto_brief = cfg.get("AUTO_BRIEF", "false") == "true"
     # With AUTO_BRIEF the agent judges the comments first and ask_fixes.py sends the one message.
     if not auto_brief:
-        notify(cfg, f"{total} new PR comment(s)",
+        notify(cfg, f"{total} PR comment(s) waiting on you",
                "\n".join(summary) + "\nDetails: ~/.pr-inbox/inbox.md · Hand off: /pr-brief <repo#number>")
     print(json.dumps({"new": total, "prs": list(fresh)}))
 
