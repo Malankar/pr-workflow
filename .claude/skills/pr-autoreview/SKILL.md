@@ -35,6 +35,8 @@ If that exits 1 too, write "No PRs picked" and end the run. `ask-prs.py` is the 
 
 Keep the main context small: process PRs sequentially, let sub-agents read diffs, and keep only a one-line result per PR in your own context.
 
+**Tooling rule (the run has no one to approve prompts):** use the Read, Write and Edit tools for files, and only the scripts named in this skill for shell work. Don't write ad-hoc shell or Python (`B=...; python3 -c ...`, heredocs, `cat >> file`): anything not allowed is denied, and a denied step fails the PR.
+
 ### 2a. Prepare
 
 ```bash
@@ -45,7 +47,7 @@ It prints JSON with `worktree`, `bundle`, `fixedPoint`, `clone`. Run every git c
 
 ### 2b. Build the spec
 
-Write `<bundle>/spec.md` containing:
+Read `<bundle>/meta.json` and `<bundle>/tickets.txt` with the Read tool, then create `<bundle>/spec.md` with the Write tool, containing:
 
 1. The PR title and description from `<bundle>/meta.json`.
 2. For each key in `<bundle>/tickets.txt`: if Jira/Atlassian tools are available, fetch the ticket and append its summary, description and acceptance criteria. Ignore keys that don't resolve to a ticket (things like `UTF-8`).
@@ -69,7 +71,7 @@ Use the **code-review** skill (from `mattpocock/skills`) with these unattended o
 
 ### 2d. Normalize
 
-Turn all three reports into `<bundle>/findings.json`, mapping each line's tag to a severity. Copy claims faithfully; don't judge them yet, that's the verifier's job.
+Turn all three reports into `<bundle>/findings.json` (create it with the Write tool), mapping each line's tag to a severity. Copy claims faithfully; don't judge them yet, that's the verifier's job.
 
 ```json
 {
@@ -95,13 +97,25 @@ A finding with no specific location (for example "requirement X is missing") get
 
 Launch the **pr-verifier** agent. Give it only:
 
-- the path to `findings.json`;
+- a findings file;
 - the worktree path;
 - `<bundle>/pr.diff` and `<bundle>/spec.md`.
 
-**Do not pass the reviewers' reports or your own opinion.** The verifier has to re-derive every finding from the code, not agree with the reviewers. With more than 10 findings, split them by file across up to 3 verifiers in parallel, then merge their outputs.
+**Do not pass the reviewers' reports or your own opinion.** The verifier has to re-derive every finding from the code, not agree with the reviewers.
 
-The verifier writes `<bundle>/verified.json`. Check it parses as JSON; if not, ask the verifier once to fix it, otherwise log the PR as failed.
+First split the findings:
+
+```bash
+python3 .claude/skills/pr-autoreview/scripts/split-findings.py <bundle>
+```
+
+It prints one findings file per line: `findings.json` itself (10 findings or fewer), or `findings.part0.json` to `findings.part2.json` split by file. Launch one **pr-verifier** per printed file, all in one parallel batch. A verifier writes its answer next to its input: `verified.json` for `findings.json`, `verified.partN.json` for `findings.partN.json`. Then:
+
+```bash
+python3 .claude/skills/pr-autoreview/scripts/merge-verified.py <bundle>
+```
+
+It merges the parts into `verified.json` and checks it parses. If it exits 1, ask the verifier named in the message once to fix its file and run it again; otherwise log the PR as failed.
 
 ### 2f. Post
 
@@ -122,7 +136,7 @@ It writes `<bundle>/context.md` (what the PR does, every verified finding, why t
 ### 2h. Clean up
 
 ```bash
-git -C <clone> worktree remove --force <worktree>
+bash .claude/skills/pr-autoreview/scripts/cleanup-pr.sh <clone> <worktree>
 ```
 
 ## 3. Notify
@@ -135,7 +149,7 @@ python3 .claude/skills/pr-autoreview/scripts/notify-summary.py <bundle> [<bundle
 
 ## 4. Run summary
 
-Append to `$STATE_DIR/runs/<today>/summary.md` and print it. One line per PR:
+Write `$STATE_DIR/runs/<today>/summary.md` with the Write tool (one write, after the last PR) and print it. One line per PR:
 
 - the PR and its title;
 - what happened (posted / clean / dry run / skipped / failed);

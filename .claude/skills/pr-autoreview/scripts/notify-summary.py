@@ -3,9 +3,10 @@
 
 Usage: notify-summary.py <bundle> [<bundle> ...]
 
-Each bundle needs the brief.json that write-context.py wrote. Sends one header message and one
-message per PR: link, finding counts, and the P1 and P2 titles (P3s are counted, not listed).
-The full detail is in each bundle's context.md.
+Each bundle needs the brief.json that write-context.py wrote. Sends one header message, then per
+PR: what the PR does, the finding counts, every P1 and P2 with its title, location and a one-line
+reason, and the P3s as titles only. A long PR is split over several messages. The full detail is
+in each bundle's context.md.
 """
 import json
 import pathlib
@@ -36,14 +37,33 @@ def send(token, chat_id, text):
         print(f"telegram send failed: {type(err).__name__}", file=sys.stderr)
 
 
-def pr_message(b):
+def short_path(where):
+    path, _, line = where.rpartition(":")
+    return "/".join(path.split("/")[-2:]) + (f":{line}" if line else "") if path else where
+
+
+def pr_messages(b):
+    """Telegram caps a message at 4096 characters, so the findings go out in chunks."""
     c = b["counts"]
-    lines = [f"#{b['number']} {b['title']} (by {b['author']})", b["url"],
-             f"{b['raised']} raised → {b['verified']} verified"
-             + (f" → {b['posting']} to post" if b["posting"] is not None else "")
-             + f" ({c['P1']} P1, {c['P2']} P2, {c['P3']} P3)"]
-    lines += [f"🔴 {t}" for t in b["p1"]] + [f"🟡 {t}" for t in b["p2"]]
-    return "\n".join(lines)
+    head = [f"#{b['number']} {b['title']} (by {b['author']})", b["url"],
+            f"About: {b['about'] or 'no description on the PR'}",
+            f"{b['raised']} raised → {b['verified']} verified"
+            + (f" → {b['posting']} to post" if b["posting"] is not None else "")
+            + f" ({c['P1']} P1, {c['P2']} P2, {c['P3']} P3)"]
+    blocks = []
+    for f in b["findings"]:
+        if f["severity"] == "P3":
+            blocks.append(f"⚪ P3 {short_path(f['where'])}: {f['title']}")
+        else:
+            icon = "🔴" if f["severity"] == "P1" else "🟡"
+            blocks.append(f"{icon} {f['severity']} {short_path(f['where'])}\n{f['title']}\nWhy: {f['why']}")
+    messages, current = [], "\n".join(head)
+    for block in blocks:
+        if len(current) + len(block) + 2 > 3900:
+            messages.append(current)
+            current = f"#{b['number']} (continued)"
+        current += "\n\n" + block
+    return messages + [current]
 
 
 def main():
@@ -55,7 +75,8 @@ def main():
     mode = "dry run, nothing posted to GitHub" if cfg.get("DRY_RUN") == "true" else "pending reviews created on GitHub"
     send(token, chat_id, f"PR auto-review finished: {len(briefs)} PR(s) ({mode})")
     for b in briefs:
-        send(token, chat_id, pr_message(b))
+        for message in pr_messages(b):
+            send(token, chat_id, message)
 
 
 if __name__ == "__main__":

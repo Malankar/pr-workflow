@@ -3,22 +3,41 @@
   "permissions": {
     "allow": [
       "Bash(bash .claude/skills/pr-autoreview/scripts/find-prs.sh:*)",
+      "Bash(bash .claude/skills/pr-autoreview/scripts/take-queue.sh:*)",
       "Bash(bash .claude/skills/pr-autoreview/scripts/prepare-pr.sh:*)",
+      "Bash(bash .claude/skills/pr-autoreview/scripts/cleanup-pr.sh:*)",
+      "Bash(python3 .claude/skills/pr-autoreview/scripts/ask-prs.py:*)",
+      "Bash(python3 .claude/skills/pr-autoreview/scripts/split-findings.py:*)",
+      "Bash(python3 .claude/skills/pr-autoreview/scripts/merge-verified.py:*)",
+      "Bash(python3 .claude/skills/pr-autoreview/scripts/write-context.py:*)",
+      "Bash(python3 .claude/skills/pr-autoreview/scripts/notify-summary.py:*)",
       "Bash(python3 .claude/skills/pr-autoreview/scripts/post_review.py:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(git rev-parse:*)",
-      "Bash(git worktree remove:*)",
+      "Bash(git -C /Users/avdhut/.pr-autoreview/* diff *)",
+      "Bash(git -C /Users/avdhut/.pr-autoreview/* log *)",
+      "Bash(git -C /Users/avdhut/.pr-autoreview/* show *)",
+      "Bash(git -C /Users/avdhut/.pr-autoreview/* grep *)",
+      "Bash(git -C /Users/avdhut/.pr-autoreview/* blame *)",
+      "Bash(git -C /Users/avdhut/.pr-autoreview/* ls-files *)",
       "Read(~/.pr-autoreview/**)",
-      "Edit(~/.pr-autoreview/**)"
+      "Edit(~/.pr-autoreview/**)",
+      "mcp__claude_ai_Atlassian__getJiraIssue",
+      "mcp__claude_ai_Atlassian__getAccessibleAtlassianResources",
+      "Skill(code-review)"
     ],
     "deny": [
       "Bash(git push:*)",
+      "Bash(git -C * push *)",
+      "Bash(git -c * push *)",
       "Bash(gh api:*)",
       "Bash(gh pr comment:*)",
       "Bash(gh pr review:*)",
-      "Bash(gh pr merge:*)"
+      "Bash(gh pr merge:*)",
+      "Read(**/telegram.env)",
+      "Bash(cat *telegram.env*)"
     ]
   }
 }
