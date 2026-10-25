@@ -182,11 +182,14 @@ def main():
     with open(state_dir / "history.md", "a") as history:
         history.write("\n".join(lines) + "\n")
 
-    notify(cfg, f"{total} new PR comment(s)",
-           "\n".join(summary) + "\nDetails: ~/.pr-inbox/inbox.md · Hand off: /pr-brief <repo#number>")
+    auto_brief = cfg.get("AUTO_BRIEF", "false") == "true"
+    # With AUTO_BRIEF the agent judges the comments first and ask_fixes.py sends the one message.
+    if not auto_brief:
+        notify(cfg, f"{total} new PR comment(s)",
+               "\n".join(summary) + "\nDetails: ~/.pr-inbox/inbox.md · Hand off: /pr-brief <repo#number>")
     print(json.dumps({"new": total, "prs": list(fresh)}))
 
-    if cfg.get("AUTO_BRIEF", "false") == "true":
+    if auto_brief:
         (state_dir / "brief-queue.json").write_text(json.dumps(list(fresh)))
         sys.exit(0)
     sys.exit(1)
