@@ -18,12 +18,12 @@ Run every command from the root of the `claude-automations` repo.
 The Orca precheck has already run `find-prs.sh` (finds the PRs) and `ask-prs.py` (asked the user on Telegram which ones to review, and waited up to 9 minutes, the most an Orca precheck allows). It left the picked PRs in `~/.pr-autoreview/queue.json`. That file is single-use: take it, and move it out of the way so the same picks can never be reviewed twice.
 
 ```bash
-f=~/.pr-autoreview/queue.json; [ -s "$f" ] && mv "$f" ~/.pr-autoreview/queue.used.json && cat ~/.pr-autoreview/queue.used.json
+bash .claude/skills/pr-autoreview/scripts/take-queue.sh
 ```
 
 It's a JSON array (repo, number, title, url, headSha). Review exactly those and no others. The filtering (bots, Dependabot, drafts, PRs already reviewed by you or the skip-list, commits already reviewed) is already done; don't second-guess it.
 
-If the file is missing or `[]` there's no fresh pick, which means this isn't a precheck run (for example a manual "run pr-autoreview" in a normal session). Then run both scripts yourself, in order, and use the PRs the second one prints:
+If it exits 1 (file missing or `[]`) there's no fresh pick, which means this isn't a precheck run (for example a manual "run pr-autoreview" in a normal session). Then run both scripts yourself, in order, and use the PRs the second one prints:
 
 ```bash
 bash .claude/skills/pr-autoreview/scripts/find-prs.sh && python3 .claude/skills/pr-autoreview/scripts/ask-prs.py
@@ -111,13 +111,29 @@ python3 .claude/skills/pr-autoreview/scripts/post_review.py <bundle>
 
 It posts only `confirmed` or `downgraded` findings, caps nits, moves comments for lines outside the diff into the review body, records state, and prints a one-line JSON result. With `DRY_RUN=true` in config it writes `payload.json` and posts nothing.
 
-### 2g. Clean up
+### 2g. Write the context
+
+```bash
+python3 .claude/skills/pr-autoreview/scripts/write-context.py <bundle>
+```
+
+It writes `<bundle>/context.md` (what the PR does, every verified finding, why the rest were rejected) and `<bundle>/brief.json`. Don't summarise the PR yourself: the script does it for free, and `context.md` is what the user opens later to re-review or answer a question.
+
+### 2h. Clean up
 
 ```bash
 git -C <clone> worktree remove --force <worktree>
 ```
 
-## 3. Run summary
+## 3. Notify
+
+After the last PR, send the Telegram summary. Pass the bundle of every PR that got a `brief.json`:
+
+```bash
+python3 .claude/skills/pr-autoreview/scripts/notify-summary.py <bundle> [<bundle> ...]
+```
+
+## 4. Run summary
 
 Append to `$STATE_DIR/runs/<today>/summary.md` and print it. One line per PR:
 
