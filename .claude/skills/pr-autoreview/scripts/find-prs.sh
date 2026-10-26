@@ -10,6 +10,7 @@ source "$HERE/../config.env"
 mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/state.json"
 [[ -f "$STATE_FILE" ]] || echo '{}' > "$STATE_FILE"
+python3 "$HERE/prune_state.py" "$STATE_FILE" || true
 
 query="is:pr is:open -is:draft review-requested:@me -reviewed-by:@me -author:app/dependabot"
 for user in $SKIP_IF_REVIEWED_BY; do
