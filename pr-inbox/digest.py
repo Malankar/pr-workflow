@@ -157,7 +157,7 @@ def main():
     if not cfg.get("REPOS"):
         sys.exit("digest needs REPOS in pr-inbox/config.env")
     if not args.dry_run and (not token or not chat_id):
-        sys.exit("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing (see pr-inbox/config.env, telegram.env)")
+        sys.exit("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing (set TELEGRAM_BOT_TOKEN in ~/.zshenv; chat id is in pr-inbox/config.env)")
 
     mine, replied, untouched = scan(cfg, gh(["api", "user", "--jq", ".login"]).strip())
     if not (mine or replied or untouched):

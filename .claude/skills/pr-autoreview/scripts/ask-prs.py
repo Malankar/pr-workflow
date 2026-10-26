@@ -81,7 +81,7 @@ def main():
     cfg = load_config()
     token, chat_id = cfg.get("TELEGRAM_BOT_TOKEN", ""), cfg.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat_id:
-        sys.exit("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing (see pr-inbox/config.env, telegram.env)")
+        sys.exit("TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing (set TELEGRAM_BOT_TOKEN in ~/.zshenv; chat id is in pr-inbox/config.env)")
 
     state_dir = pathlib.Path(cfg["STATE_DIR"])
     queue_file = state_dir / "queue.json"
