@@ -50,7 +50,10 @@ def load_config():
 
 
 def gh(args):
-    result = subprocess.run(["gh", *args], capture_output=True, text=True)
+    try:  # a hung GitHub call must not eat the whole precheck window
+        result = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"gh {' '.join(args[:3])}: timed out after 60s")
     if result.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args[:3])}: {result.stderr.strip()}")
     return result.stdout

@@ -123,10 +123,10 @@ def inbox_running():
     """True while the latest PR inbox agent run is still going. Any failure to check means no."""
     try:
         listing = json.loads(subprocess.run(["orca", "automations", "list", "--json"], capture_output=True,
-                                            text=True, check=True).stdout)["result"]["automations"]
+                                            text=True, check=True, timeout=60).stdout)["result"]["automations"]
         auto = next(a for a in listing if a["name"] == "PR inbox")
         runs = json.loads(subprocess.run(["orca", "automations", "runs", "--id", auto["id"], "--limit", "1",
-                                          "--json"], capture_output=True, text=True, check=True).stdout)
+                                          "--json"], capture_output=True, text=True, check=True, timeout=60).stdout)
         run = runs["result"]["runs"][0]
     except Exception:
         return False
@@ -183,7 +183,7 @@ def parse_reply(text, count):
 def find_orca_repo(name):
     out = None
     for attempt in range(3):  # Orca can be briefly unreachable from a scheduled run
-        listed = subprocess.run(["orca", "repo", "list", "--json"], capture_output=True, text=True)
+        listed = subprocess.run(["orca", "repo", "list", "--json"], capture_output=True, text=True, timeout=60)
         if listed.returncode == 0:
             out = listed.stdout
             break
@@ -195,7 +195,7 @@ def find_orca_repo(name):
 
 def find_worktree(repo_id, name):
     out = subprocess.run(["orca", "worktree", "list", "--repo", f"id:{repo_id}", "--json"],
-                         capture_output=True, text=True, check=True).stdout
+                         capture_output=True, text=True, check=True, timeout=60).stdout
     for w in json.loads(out)["result"]["worktrees"]:
         if not w.get("isArchived") and (w.get("displayName") == name or (w.get("branch") or "").endswith(f"/{name}")):
             return w
