@@ -8,9 +8,11 @@ Writes a bundle to ~/.pr-inbox/briefs/<owner>__<repo>__<n>/:
   pr.diff            the full diff
   threads.json       unresolved review threads, with ids for replying and resolving
   conversation.json  conversation comments and review summaries from other people
+  brief.md           the saved brief (written by the agent); reused while its fingerprint matches
 Makes sure a local clone has the PR head fetched, so code can be read with `git show`.
 Prints one JSON object with the paths and the numbers that matter.
 """
+import hashlib
 import json
 import pathlib
 import re
@@ -100,6 +102,16 @@ def main():
                                  "body": r.get("body") or "", "url": r["html_url"], "at": r.get("submitted_at")})
     (bundle / "conversation.json").write_text(json.dumps(conversation, indent=2))
 
+    # Fingerprint of everything a brief depends on. A saved brief.md that starts with the same
+    # fingerprint is still valid, so the agent can show it instead of re-judging every comment.
+    fingerprint = hashlib.sha1(json.dumps([
+        meta["headRefOid"], meta.get("reviewDecision"),
+        [(c["databaseId"], c["body"]) for t in threads for c in t["comments"]["nodes"]],
+        [(c["url"], c["body"]) for c in conversation],
+    ]).encode()).hexdigest()[:12]
+    brief = bundle / "brief.md"
+    cached = brief.exists() and brief.read_text().startswith(f"<!-- fingerprint: {fingerprint} -->")
+
     clone = find_clone(repo, slug)
     run(["git", "-C", str(clone), "fetch", "--quiet", "origin",
          f"+refs/pull/{number}/head:refs/remotes/pr/{number}",
@@ -111,6 +123,7 @@ def main():
         "size": f"+{meta['additions']} -{meta['deletions']} in {meta['changedFiles']} files",
         "unresolvedThreads": len(threads), "conversationItems": len(conversation),
         "reviewDecision": meta.get("reviewDecision"),
+        "fingerprint": fingerprint, "briefPath": str(brief), "briefCached": cached,
         "readCode": f"git -C {clone} show {meta['headRefOid']}:<path>",
     }, indent=2))
 

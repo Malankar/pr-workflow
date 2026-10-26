@@ -15,7 +15,9 @@ python3 ~/.claude/skills/pr-brief/scripts/pr_context.py <ref>
 
 `<ref>` is `owner/repo#123`, a PR URL, or just `123` inside the repo. The script prints the bundle path, the clone, the head SHA, and a `readCode` command template.
 
-Read `meta.json`, `threads.json` and `conversation.json`. Don't read all of `pr.diff`: start from the files list in `meta.json`, then read only the hunks around each comment (each thread carries its `diffHunk`). Read code at the PR head with `git -C <clone> show <headSha>:<path>`, and only the ranges you need.
+If the output says `"briefCached": true`, nothing has changed since the last brief: read `briefPath`, show it to the user as is (say it's the saved brief), skip steps 2 and 3, and go straight to the question at the end. The cache is for interactive use only; unattended mode below ignores it.
+
+Otherwise read `meta.json`, `threads.json` and `conversation.json`. Don't read all of `pr.diff`: start from the files list in `meta.json`, then read only the hunks around each comment (each thread carries its `diffHunk`). Read code at the PR head with `git -C <clone> show <headSha>:<path>`, and only the ranges you need.
 
 ## 2. Judge every unresolved comment
 
@@ -47,6 +49,8 @@ Use this structure:
 - the recommended fix or the draft reply.
 
 **Next step.** One line: what you'd do first.
+
+Save the finished brief with the Write tool to `briefPath`, with `<!-- fingerprint: <fingerprint> -->` (the `fingerprint` from the script output) as its first line, so the next call can reuse it.
 
 Then ask one question: which items to fix, which to reply to, and whether to resolve any.
 
