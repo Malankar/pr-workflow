@@ -18,7 +18,7 @@ import urllib.request
 from datetime import date
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from check_my_prs import collect, gh, load_config  # noqa: E402
+from check_my_prs import collect, gh, load_config, telegram_lock  # noqa: E402
 
 THREADS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
@@ -167,6 +167,10 @@ def main():
     if args.dry_run:
         print(text)
     else:
+        # A fix question may be waiting for my reply; don't send over it. Wait up to 10 min for it to finish.
+        lock = telegram_lock(cfg["STATE_DIR"], wait_s=600)
+        if not lock:
+            sys.exit("telegram busy (waiting for a reply to another message), digest not sent")
         for part in chunks(text):
             send(token, chat_id, part)
     print(json.dumps({"sent": 0 if args.dry_run else 1, "mine": len(mine), "replied": len(replied),

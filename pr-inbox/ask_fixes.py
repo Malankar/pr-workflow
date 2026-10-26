@@ -2,7 +2,7 @@
 """ask_fixes: send me the judged review comments on Telegram, then start fix sessions. No AI, no tokens.
 
 Reads every ~/.pr-inbox/briefs/<owner>/<repo>#<n>/findings.json (written by the PR inbox agent),
-sends the open ones as a numbered list and waits up to ASK_TIMEOUT_MIN for a reply like "fix all",
+sends the open ones as a numbered list and waits up to ASK_TIMEOUT_MIN (default 9; Orca caps prechecks at 600s) for a reply like "fix all",
 "fix 1,3" or "none". For each PR I picked from it creates an Orca worktree on the PR branch and
 starts a Claude session there with only the picked fixes. The session is told not to commit, push,
 reply or resolve, so the changes stay uncommitted for me to check.
@@ -27,7 +27,7 @@ import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from check_my_prs import load_config  # noqa: E402
+from check_my_prs import load_config, telegram_lock  # noqa: E402
 
 TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "9"))
 MAX_CHARS = 3800  # Telegram caps a message at 4096
@@ -40,14 +40,17 @@ def tg(token, method, **params):
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}",
                                  data=json.dumps(params).encode(),
                                  headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=params.get("timeout", 0) + 15) as resp:
-            return json.load(resp)["result"]
-    except urllib.error.HTTPError as err:  # don't print the URL: it contains the bot token
-        hint = " (webhook set on this bot, or another getUpdates is running?)" if err.code == 409 else ""
-        sys.exit(f"telegram {method} failed: HTTP {err.code}{hint}")
-    except Exception as err:
-        sys.exit(f"telegram {method} failed: {type(err).__name__}")
+    for attempt in range(3):  # a slow Telegram response shouldn't kill a run that is waiting on me
+        try:
+            with urllib.request.urlopen(req, timeout=params.get("timeout", 0) + 15) as resp:
+                return json.load(resp)["result"]
+        except urllib.error.HTTPError as err:  # don't print the URL: it contains the bot token
+            hint = " (webhook set on this bot, or another getUpdates is running?)" if err.code == 409 else ""
+            sys.exit(f"telegram {method} failed: HTTP {err.code}{hint}")
+        except Exception as err:
+            if attempt == 2 or method == "sendMessage":  # a resent message could go out twice
+                sys.exit(f"telegram {method} failed: {type(err).__name__}")
+            time.sleep(3)
 
 
 def clip(text, limit=250):
@@ -224,6 +227,10 @@ def main():
     text, numbered, informed = build_message(prs)
     if not numbered and not informed:
         print(json.dumps({"asked": 0}))
+        sys.exit(1)
+    lock = None if args.dry_run else telegram_lock(state_dir)  # held until exit, so no second asker or digest overlaps
+    if not args.dry_run and not lock:
+        print(json.dumps({"asked": 0, "busy": True}))
         sys.exit(1)
 
     if args.dry_run:

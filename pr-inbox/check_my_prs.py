@@ -14,10 +14,12 @@ Exit code: 1 unless AUTO_BRIEF=true and something is waiting that you haven't be
 As an Orca precheck, exit 1 means "skip the agent run", so with nothing to report this never
 spends a token.
 """
+import fcntl
 import json
 import pathlib
 import subprocess
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 
@@ -91,6 +93,24 @@ def collect(repo, number, me):
     return items
 
 
+def telegram_lock(state_dir, wait_s=0):
+    """Take the Telegram lock so only one script talks to my chat at a time (ask_fixes holds it
+    while it waits for a reply). Returns the open lock file (keep it referenced; it releases on exit),
+    or None if someone else still has it after wait_s seconds."""
+    pathlib.Path(state_dir).mkdir(parents=True, exist_ok=True)
+    handle = open(pathlib.Path(state_dir) / "telegram.lock", "w")
+    deadline = time.time() + wait_s
+    while True:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return handle
+        except OSError:
+            if time.time() >= deadline:
+                handle.close()
+                return None
+            time.sleep(5)
+
+
 def notify(cfg, title, message):
     if cfg.get("NOTIFY_MACOS", "false") == "true" and sys.platform == "darwin":
         # Pass text as arguments, never inside the script, so comment text can't inject AppleScript.
@@ -108,7 +128,10 @@ def notify(cfg, title, message):
         except Exception as err:  # a failed notification must not lose the state update
             print(f"slack notify failed: {err}", file=sys.stderr)
     token, chat_id = cfg.get("TELEGRAM_BOT_TOKEN", ""), cfg.get("TELEGRAM_CHAT_ID", "")
-    if token and chat_id:
+    lock = telegram_lock(cfg["STATE_DIR"]) if token and chat_id else None
+    if token and chat_id and not lock:
+        print("telegram busy (waiting for a reply to another message), skipped", file=sys.stderr)
+    elif lock:
         # Plain text (no parse_mode) so comment text can't break Markdown parsing. Telegram caps at 4096.
         req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
                                      data=json.dumps({"chat_id": chat_id,

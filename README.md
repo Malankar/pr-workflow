@@ -69,9 +69,9 @@ The first run reports everything already waiting on you, so expect a bigger batc
 
 ### Fixing comments from Telegram (`AUTO_BRIEF=true`)
 
-With `AUTO_BRIEF=true` there is no early ping. The PR inbox agent judges each new comment and writes `~/.pr-inbox/briefs/<owner>/<repo>#<n>/findings.json`. The **PR fix ask** automation (precheck `pr-inbox/ask_fixes.py`, no agent) checks every 30 minutes, at :20 and :50. It waits until the PR inbox agent run has finished, then sends one numbered Telegram message: comment, context, issue, fix, with not-valid ones as FYI.
+With `AUTO_BRIEF=true` there is no early ping. The PR inbox agent judges each new comment and writes `~/.pr-inbox/briefs/<owner>/<repo>#<n>/findings.json`. The **PR fix ask** automation (precheck `pr-inbox/ask_fixes.py`, no agent) checks every hour, at :20. It waits until the PR inbox agent run has finished, then sends one numbered Telegram message: comment, context, issue, fix, with not-valid ones as FYI.
 
-Reply `fix all`, `fix 1,3,4` or `none` within 9 minutes. For each PR you picked from, it creates an Orca worktree `fix-<repo>-<pr>` from the PR branch and starts a Claude session there with only those fixes. If that worktree already exists, the new session starts in it and keeps the earlier uncommitted changes. Nothing is committed, pushed, replied to or resolved; check the diff in that session and tell it what to do next. No reply means the same findings are asked again 2 hours later (`ASK_AGAIN_H`).
+Reply `fix all`, `fix 1,3,4` or `none` within 9 minutes. For each PR you picked from, it creates an Orca worktree `fix-<repo>-<pr>` from the PR branch and starts a Claude session there with only those fixes. If that worktree already exists, the new session starts in it and keeps the earlier uncommitted changes. Nothing is committed, pushed, replied to or resolved; check the diff in that session and tell it what to do next. No reply means the same findings are asked again 2 hours later (`ASK_AGAIN_H`). Only one script talks to Telegram at a time: a lock in `~/.pr-inbox/telegram.lock` makes the digest and notifications wait for or skip over an open question.
 
 ### Daily digest
 
