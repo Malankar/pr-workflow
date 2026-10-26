@@ -2,7 +2,7 @@
 """ask_fixes: send me the judged review comments on Telegram, then start fix sessions. No AI, no tokens.
 
 Reads every ~/.pr-inbox/briefs/<owner>/<repo>#<n>/findings.json (written by the PR inbox agent),
-sends the open ones as a numbered list and waits up to ASK_TIMEOUT_MIN (default 9; Orca caps prechecks at 600s) for a reply like "fix all",
+sends the open ones as a numbered list and waits up to ASK_TIMEOUT_MIN (default 8; Orca caps prechecks at 600s) for a reply like "fix all",
 "fix 1,3" or "none". For each PR I picked from it creates an Orca worktree on the PR branch and
 starts a Claude session there with only the picked fixes. The session is told not to commit, push,
 reply or resolve, so the changes stay uncommitted for me to check.
@@ -27,9 +27,9 @@ import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from check_my_prs import load_config, telegram_lock  # noqa: E402
+from check_my_prs import gh, load_config, telegram_lock  # noqa: E402
 
-TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "9"))
+TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "8"))
 MAX_CHARS = 3800  # Telegram caps a message at 4096
 ASK_AGAIN_S = float(os.environ.get("ASK_AGAIN_H", "2")) * 3600
 FIXABLE = ("valid", "partly")
@@ -73,6 +73,44 @@ def load_pending(state_dir):
         if open_items:
             prs.append({"path": path, "data": data, "fix": fix, "fyi": fyi})
     return prs
+
+
+THREAD_STATUS_QUERY = """
+query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequestReviewThread {
+      id isResolved
+      comments(last: 1) { nodes { author { login } } }
+    }
+  }
+}"""
+
+
+def drop_answered(prs):
+    """Findings are a snapshot from when the inbox agent ran. Before asking, check GitHub again and drop
+    the ones I have since answered (my reply is the last one in the thread) or that got resolved.
+    A GitHub failure keeps everything, so a flaky network can't hide comments."""
+    ids = [f["id"] for pr in prs for f in pr["fix"] + pr["fyi"] if str(f.get("id", "")).startswith("PRRT_")]
+    if not ids:
+        return prs
+    try:
+        me = gh(["api", "user", "--jq", ".login"]).strip()
+        data = json.loads(gh(["api", "graphql", "-f", f"query={THREAD_STATUS_QUERY}",
+                              *[arg for i in ids for arg in ("-f", f"ids[]={i}")]]))
+        threads = {n["id"]: n for n in data["data"]["nodes"] if n}
+    except Exception as err:
+        print(f"couldn't re-check threads on GitHub, asking about all of them: {err}", file=sys.stderr)
+        return prs
+    for pr in prs:
+        for f in pr["fix"] + pr["fyi"]:
+            t = threads.get(f["id"])
+            last = ((t or {}).get("comments", {}).get("nodes") or [{}])[0].get("author") or {}
+            if t and (t["isResolved"] or last.get("login") == me):
+                f["state"] = "answered"
+        pr["fix"] = [f for f in pr["fix"] if f["state"] == "open"]
+        pr["fyi"] = [f for f in pr["fyi"] if f["state"] == "open"]
+    save(prs)
+    return [pr for pr in prs if pr["fix"] or pr["fyi"]]
 
 
 def due(prs):
@@ -225,6 +263,8 @@ def main():
     state_dir = pathlib.Path(args.state_dir or cfg["STATE_DIR"])
 
     prs = load_pending(state_dir)
+    if prs and not args.dry_run:
+        prs = drop_answered(prs)
     if not prs:
         print(json.dumps({"asked": 0}))
         sys.exit(1)
