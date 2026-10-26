@@ -144,7 +144,15 @@ def parse_reply(text, count):
 
 
 def find_orca_repo(name):
-    out = subprocess.run(["orca", "repo", "list", "--json"], capture_output=True, text=True, check=True).stdout
+    out = None
+    for attempt in range(3):  # Orca can be briefly unreachable from a scheduled run
+        listed = subprocess.run(["orca", "repo", "list", "--json"], capture_output=True, text=True)
+        if listed.returncode == 0:
+            out = listed.stdout
+            break
+        time.sleep(5)
+    if out is None:
+        raise RuntimeError(f"orca repo list failed: {(listed.stderr or listed.stdout).strip()[:150]}")
     return next((r for r in json.loads(out)["result"]["repos"] if r["displayName"].lower() == name.lower()), None)
 
 
@@ -264,8 +272,18 @@ def main():
     results = []
     for pr in prs:
         chosen = [f for p, f in picked if p is pr]
-        if chosen:
-            results.append(start_session(pr["data"], chosen, args.dry_run))
+        if not chosen:
+            continue
+        try:
+            result = start_session(pr["data"], chosen, args.dry_run)
+        except Exception as err:  # an Orca/git hiccup must not lose the reply or crash silently
+            detail = (getattr(err, "stderr", "") or "").strip()[:150] if isinstance(err, subprocess.CalledProcessError) else ""
+            result = f"{pr['data']['pr']}: couldn't start the fix session ({type(err).__name__} {detail}). Will ask again."
+        if not args.dry_run and not result.split(": ", 1)[-1].startswith(("started", "added")):
+            for f in chosen:  # not started: keep it open so the next run asks about it again
+                f["state"] = "open"
+                f["askedAt"] = 0
+        results.append(result)
     if args.dry_run:
         print("\n".join(results) or "nothing picked")
         sys.exit(1)
