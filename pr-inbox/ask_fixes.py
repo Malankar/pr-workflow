@@ -29,7 +29,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from check_my_prs import gh, load_config, telegram_lock  # noqa: E402
 
-TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "8"))
+TIMEOUT_MIN = int(os.environ.get("ASK_TIMEOUT_MIN", "6"))
 MAX_CHARS = 3800  # Telegram caps a message at 4096
 ASK_AGAIN_S = float(os.environ.get("ASK_AGAIN_H", "2")) * 3600
 FIXABLE = ("valid", "partly")
