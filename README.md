@@ -11,6 +11,7 @@ claude-automations/
 ├── pr-inbox/check_my_prs.py        new comments on YOUR PRs (every 2h, no AI)
 ├── pr-inbox/digest.py              daily Telegram digest of everything waiting on you (no AI)
 ├── pr-inbox/ask_fixes.py           Telegram "fix 1,3" picker that starts uncommitted fix sessions (no AI)
+├── pr-inbox/usage_report.py        tokens per automation and model, from run transcripts (no AI)
 └── global/pr-brief/                interactive hand-off skill, installed to ~/.claude
 ```
 
