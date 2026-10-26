@@ -93,42 +93,41 @@ def inbox_running():
     except Exception:
         return False
     started = (run.get("startedAt") or 0) / 1000
-    return run.get("status") not in RUN_DONE and time.time() - started < ASK_AGAIN_S
+    status = run.get("status") or ""
+    done = status in RUN_DONE or status.startswith("skipped")  # skipped_precheck is a finished run too
+    return not done and time.time() - started < ASK_AGAIN_S
 
 
 def format_fix(number, f):
-    return (f"\n{number}. [{f['verdict']}] {f['author']} on {f['where']}: {clip(f['comment'])}"
-            f"\n   Context: {clip(f.get('context'))}\n   Issue: {clip(f.get('issue'))}\n   Fix: {clip(f['fix'])}")
+    return f"\n{number}. {f['author']}: {clip(f['comment'], 110)}"
 
 
 def build_message(prs):
-    """Number the fixable findings across all PRs. Whatever doesn't fit stays open for the next run."""
+    """Number the fixable findings across all PRs, one line each. Returns (text, numbered, informed)."""
     text = 'Review comments on your PRs. Reply "fix all", "fix 1,3" or "none".'
     numbered, informed = [], []
-    full = False
     for pr in prs:
-        if full:
-            break
-        start, shown_fix, shown_fyi = len(text), 0, []
-        text += f"\n\n{pr['data']['pr']} {clip(pr['data'].get('title'), 80)}"
+        if not pr["fix"] and not pr["fyi"]:
+            continue
+        text += f"\n\n{pr['data']['pr']} {pr['data'].get('url', '')}"
         for f in pr["fix"]:
-            entry = format_fix(len(numbered) + 1, f)
-            if len(text) + len(entry) > MAX_CHARS:
-                full = True
-                break
-            text += entry
+            text += format_fix(len(numbered) + 1, f)
             numbered.append((pr, f))
-            shown_fix += 1
-        if not full:
-            for f in pr["fyi"]:
-                line = f"\nFYI, no fix: [{f['verdict']}] {f['author']} on {f['where']}: {clip(f.get('issue'), 160)}"
-                if len(text) + len(line) <= MAX_CHARS:
-                    text += line
-                    shown_fyi.append(f)
-        if shown_fix == 0 and not shown_fyi:
-            text = text[:start]
-        informed += shown_fyi
+        for f in pr["fyi"]:
+            text += f"\nFYI: {f['author']}: {clip(f['comment'], 110)}"
+            informed.append(f)
     return text, numbered, informed
+
+
+def split_message(text):
+    """Telegram caps a message at 4096 chars: cut at line breaks into parts under MAX_CHARS."""
+    parts, current = [], ""
+    for line in text.split("\n"):
+        if current and len(current) + len(line) + 1 > MAX_CHARS:
+            parts.append(current)
+            current = ""
+        current += ("\n" if current else "") + line
+    return parts + [current]
 
 
 def parse_reply(text, count):
@@ -248,7 +247,8 @@ def main():
         # Skip anything I sent before this run, so an old "fix 1" can't answer a new question.
         latest = tg(token, "getUpdates", offset=-1, timeout=0)
         offset = latest[-1]["update_id"] + 1 if latest else 0
-        sent = tg(token, "sendMessage", chat_id=chat_id, disable_web_page_preview=True, text=text)
+        for part in split_message(text):
+            sent = tg(token, "sendMessage", chat_id=chat_id, disable_web_page_preview=True, text=part)
         for f in informed:
             f["state"] = "informed"
         for _, f in numbered:
