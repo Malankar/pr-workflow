@@ -12,6 +12,8 @@
       "Bash(python3 .claude/skills/pr-autoreview/scripts/write-context.py:*)",
       "Bash(python3 .claude/skills/pr-autoreview/scripts/notify-summary.py:*)",
       "Bash(python3 .claude/skills/pr-autoreview/scripts/post_review.py:*)",
+      "Bash(orca status:*)",
+      "Bash(orca orchestration:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
